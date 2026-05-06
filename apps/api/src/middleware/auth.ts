@@ -1,72 +1,64 @@
 import { Request, Response, NextFunction } from 'express';
-import { env } from '../lib/config.js';
+import { createServices } from '../lib/services.js';
+import type { AuthUser } from '../lib/services.js';
+
+export type { AuthUser };
 
 // Extend the Express Request type to carry the authenticated user
 declare global {
   namespace Express {
     interface Request {
-      user?: {
-        userId: string;
-        tenantId: string;
-        email: string;
-        role: string;
-      };
+      user?: AuthUser;
     }
   }
 }
 
-const LOCAL_TEST_TOKEN = 'test-token';
-
-const LOCAL_TEST_USER = {
-  userId: 'test-user',
-  tenantId: 'test-tenant',
-  email: 'test@regaxis.local',
-  role: 'admin',
-} as const;
+// Services singleton — created once and reused for auth verification
+let _services: ReturnType<typeof createServices> | null = null;
+function getServices() {
+  if (!_services) _services = createServices();
+  return _services;
+}
 
 /**
- * Auth middleware.
+ * requireAuth middleware.
  *
- * local:  accepts `Authorization: Bearer test-token` and injects a hard-coded
- *         test identity — no network calls, no Cognito dependency.
+ * Extracts the Bearer token from the Authorization header, verifies it
+ * using the AuthAdapter (mock in local, Cognito JWT in demo/production),
+ * and attaches the decoded user to req.user.
  *
- * demo/production: TODO — verify JWT signature against Cognito JWKS endpoint
- *         using jwks-rsa + jsonwebtoken; attach decoded payload to req.user.
+ * Returns 401 if no token is present, 403 if the token is invalid/expired.
  */
-export function authMiddleware(
+export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     res.status(401).json({
       code: 'UNAUTHORIZED',
-      message: 'Missing or malformed Authorization header',
+      message: 'Missing or malformed Authorization header. Expected: Bearer <token>',
     });
     return;
   }
 
-  const token = authHeader.slice('Bearer '.length);
+  const token = authHeader.slice('Bearer '.length).trim();
 
-  if (env.isLocal) {
-    if (token === LOCAL_TEST_TOKEN) {
-      req.user = LOCAL_TEST_USER;
-      next();
-      return;
-    }
-    res.status(401).json({
-      code: 'UNAUTHORIZED',
-      message: `Local mode: use "Authorization: Bearer ${LOCAL_TEST_TOKEN}"`,
+  try {
+    const user = await getServices().auth.verifyToken(token);
+    req.user = user;
+    next();
+  } catch (err: unknown) {
+    const appErr = err as { statusCode?: number; code?: string; message?: string };
+    const status = appErr.statusCode === 401 ? 401 : 403;
+    res.status(status).json({
+      code: appErr.code ?? (status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN'),
+      message: appErr.message ?? 'Invalid or expired token.',
     });
-    return;
   }
-
-  // demo / production — real JWT verification (stub, to be implemented)
-  // TODO: verify token with jwks-rsa + jsonwebtoken against Cognito JWKS
-  res.status(501).json({
-    code: 'NOT_IMPLEMENTED',
-    message: 'JWT verification not yet implemented for demo/production',
-  });
 }
+
+/** Legacy alias kept for backward compatibility with existing routes.ts */
+export const authMiddleware = requireAuth;
