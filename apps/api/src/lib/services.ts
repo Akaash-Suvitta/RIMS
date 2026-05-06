@@ -1,3 +1,4 @@
+import pg from 'pg';
 import { config, env } from './config.js';
 
 // ─── Adapter interfaces ───────────────────────────────────────────────────────
@@ -38,11 +39,22 @@ export interface AiAdapter {
   }>;
 }
 
+// ─── Database adapter ─────────────────────────────────────────────────────────
+
+export interface DbAdapter {
+  pool: pg.Pool;
+  query<R extends pg.QueryResultRow = pg.QueryResultRow>(
+    sql: string,
+    values?: unknown[],
+  ): Promise<pg.QueryResult<R>>;
+}
+
 export interface Services {
   storage: StorageAdapter;
   email: EmailAdapter;
   auth: AuthAdapter;
   ai: AiAdapter;
+  db: DbAdapter;
 }
 
 // ─── Stub adapters (local) ────────────────────────────────────────────────────
@@ -131,15 +143,56 @@ function createProductionAiAdapter(): AiAdapter {
   return createLocalAiAdapter();
 }
 
+// ─── Database adapter factory ─────────────────────────────────────────────────
+
+function createDbAdapter(): DbAdapter {
+  const POOL_SIZE = env.isLocal ? 10 : env.isDemo ? 3 : 20;
+
+  const pool = new pg.Pool({
+    connectionString: config.DATABASE_URL,
+    max: POOL_SIZE,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 2_000,
+  });
+
+  // Validate connection at startup
+  pool.connect().then((client) => {
+    client.query('SELECT 1').then(() => {
+      client.release();
+      console.log('[db] PostgreSQL connection verified.');
+    }).catch((err: unknown) => {
+      client.release();
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[db] Startup connection check failed: ${msg}`);
+    });
+  }).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[db] Failed to acquire connection at startup: ${msg}`);
+  });
+
+  return {
+    pool,
+    query<R extends pg.QueryResultRow = pg.QueryResultRow>(
+      sql: string,
+      values?: unknown[],
+    ): Promise<pg.QueryResult<R>> {
+      return pool.query<R>(sql, values);
+    },
+  };
+}
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export function createServices(): Services {
+  const db = createDbAdapter();
+
   if (env.isLocal) {
     return {
       storage: createLocalStorageAdapter(),
       email: createLocalEmailAdapter(),
       auth: createLocalAuthAdapter(),
       ai: createLocalAiAdapter(),
+      db,
     };
   }
 
@@ -148,5 +201,6 @@ export function createServices(): Services {
     email: createProductionEmailAdapter(),
     auth: createProductionAuthAdapter(),
     ai: createProductionAiAdapter(),
+    db,
   };
 }

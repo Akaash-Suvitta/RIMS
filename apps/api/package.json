@@ -10,8 +10,8 @@
     "test:watch": "vitest",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "migrate": "node-pg-migrate up",
-    "seed": "ts-node-dev --transpile-only seeds/index.ts"
+    "migrate": "ts-node --esm src/db/migrate.ts",
+    "seed": "ts-node --esm seeds/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
@@ -39,6 +39,7 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.0.0",
     "@types/pg": "^8.11.0",
+    "ts-node": "^10.9.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
