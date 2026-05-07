@@ -1,42 +1,33 @@
 'use client';
 
-import type { Metadata } from 'next';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '../lib/query-client';
+import { AuthProvider } from '../lib/auth';
 import './globals.css';
-
-// Note: metadata export is handled separately in a server component wrapper.
-// This layout uses 'use client' to enable the QueryClientProvider.
 
 interface RootLayoutProps {
   children: React.ReactNode;
 }
 
 export default function RootLayout({ children }: RootLayoutProps) {
-  // Create the QueryClient inside a useState so it is stable across re-renders
-  // and not shared between different users on the server.
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 60 * 1000, // 1 minute
-            retry: 1,
-          },
-        },
-      }),
-  );
-
   return (
     <html lang="en" className="dark">
       <head>
         <title>RegAxis RIM</title>
         <meta name="description" content="Regulatory Information Management platform" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+          rel="stylesheet"
+        />
       </head>
-      <body className="min-h-screen bg-navy-900 text-slate-100 antialiased">
+      <body className="min-h-screen antialiased" style={{ backgroundColor: '#0B1929', color: '#E8F0F8' }}>
         <QueryClientProvider client={queryClient}>
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </QueryClientProvider>
       </body>
     </html>
