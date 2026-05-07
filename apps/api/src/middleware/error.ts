@@ -2,6 +2,25 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { env } from '../lib/config.js';
 
+/**
+ * Duck-type check for ZodError.
+ *
+ * `instanceof ZodError` can fail when multiple copies of the `zod` package
+ * are loaded (e.g. via CJS/ESM dual bundles in tests). Checking for the
+ * structural shape is more reliable and equivalent in practice.
+ */
+function isZodError(err: unknown): err is ZodError {
+  return (
+    err instanceof ZodError ||
+    (
+      typeof err === 'object' &&
+      err !== null &&
+      Array.isArray((err as Record<string, unknown>)['issues']) &&
+      (err as Record<string, unknown>)['name'] === 'ZodError'
+    )
+  );
+}
+
 export interface AppError extends Error {
   statusCode?: number;
   code?: string;
@@ -22,9 +41,10 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   // Zod validation errors → 400 Bad Request
-  if (err instanceof ZodError) {
+  if (isZodError(err)) {
+    const zodErr = err as ZodError;
     const fieldErrors: Record<string, string> = {};
-    for (const issue of err.issues) {
+    for (const issue of zodErr.issues) {
       const fieldPath = issue.path.join('.');
       fieldErrors[fieldPath || '_'] = issue.message;
     }

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run lint
+
+  unit-tests:
+    name: Unit Tests (API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test --workspace=apps/api
+        env:
+          APP_ENV: local
+          PORT: '3002'
+          DATABASE_URL: postgresql://rim:rim@localhost:5432/rim_test
+          COGNITO_USER_POOL_ID: test-pool
+          COGNITO_CLIENT_ID: test-client
+          COGNITO_REGION: us-east-1
+          AWS_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: test-key
+          AWS_SECRET_ACCESS_KEY: test-secret
+          S3_BUCKET: rim-test
+          SES_FROM_ADDRESS: test@regaxis.local
+          ANTHROPIC_API_KEY: test-key
